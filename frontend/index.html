@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MagicTales AI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f3f0fb;
+      color: #1e1e2e;
+      min-height: 100vh;
+    }
+
+    /* ── Header ────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #5b3ec8 0%, #9b59f5 100%);
+      color: white;
+      padding: 20px 32px;
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+    header h1 { font-size: 1.6rem; font-weight: 800; }
+    header p  { opacity: 0.8; font-size: 0.9rem; }
+
+    /* ── Pipeline layout ───────────────────────────── */
+    .pipeline {
+      max-width: 960px;
+      margin: 32px auto;
+      padding: 0 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    /* ── Step card ─────────────────────────────────── */
+    .step {
+      background: white;
+      border: 1px solid #e2d9f7;
+      border-radius: 0;
+      padding: 0;
+      position: relative;
+    }
+    .step:first-child { border-radius: 14px 14px 0 0; }
+    .step:last-child  { border-radius: 0 0 14px 14px; border-top: none; }
+    .step + .step     { border-top: none; }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 24px;
+      cursor: default;
+    }
+    .step-num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #e2d9f7;
+      color: #5b3ec8;
+      font-weight: 800;
+      font-size: 0.85rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .step.done .step-num   { background: #5b3ec8; color: white; }
+    .step.active .step-num { background: #5b3ec8; color: white; }
+    .step.locked .step-num { background: #e5e7eb; color: #9ca3af; }
+
+    .step-title {
+      font-weight: 700;
+      font-size: 1rem;
+      flex: 1;
+    }
+    .step.locked .step-title { color: #9ca3af; }
+
+    .step-status {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 99px;
+    }
+    .status-done    { background: #dcfce7; color: #166534; }
+    .status-active  { background: #ede9fe; color: #5b21b6; }
+    .status-locked  { background: #f3f4f6; color: #9ca3af; }
+    .status-loading { background: #fef9c3; color: #854d0e; }
+    .status-error   { background: #fee2e2; color: #991b1b; }
+
+    .step-body {
+      padding: 0 24px 20px;
+      display: none;
+    }
+    .step.active .step-body,
+    .step.done .step-body { display: block; }
+
+    /* ── Upload zone ───────────────────────────────── */
+    #upload-zone {
+      border: 2px dashed #c4b5f0;
+      border-radius: 10px;
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      background: #faf8ff;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    #upload-zone:hover, #upload-zone.drag-over {
+      border-color: #5b3ec8; background: #f0ebff;
+    }
+    #upload-zone input[type="file"] { display: none; }
+    #upload-zone .icon  { font-size: 2rem; margin-bottom: 8px; }
+    #upload-zone p      { font-size: 0.9rem; color: #6b7280; }
+    #upload-zone strong { color: #5b3ec8; }
+    #upload-loaded {
+      margin-top: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #166534;
+    }
+
+    /* ── Buttons ───────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+      padding: 11px 28px;
+      background: #5b3ec8;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn:hover:not(:disabled)  { background: #4a30b0; }
+    .btn:active:not(:disabled) { transform: scale(0.98); }
+    .btn:disabled { background: #c4b5f0; cursor: not-allowed; }
+    .btn-play { background: #059669; }
+    .btn-play:hover:not(:disabled) { background: #047857; }
+    .btn-play:disabled { background: #6ee7b7; }
+
+    /* ── Status message ────────────────────────────── */
+    .msg {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      display: none;
+    }
+    .msg.loading { display:block; background:#ede9fe; color:#5b21b6; }
+    .msg.error   { display:block; background:#fee2e2; color:#991b1b; }
+    .msg.success { display:block; background:#dcfce7; color:#166534; }
+
+    /* ── Characters grid ───────────────────────────── */
+    .char-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .char-card {
+      border: 1px solid #e2d9f7;
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: #faf8ff;
+    }
+    .char-card-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .char-name { font-weight: 700; font-size: 0.9rem; }
+    .role-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 99px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .role-protagonist { background:#dbeafe; color:#1d4ed8; }
+    .role-antagonist  { background:#fee2e2; color:#991b1b; }
+    .role-supporting  { background:#f3f4f6; color:#4b5563; }
+    .role-narrator    { background:#ede9fe; color:#6d28d9; }
+    .char-desc { font-size: 0.78rem; color: #6b7280; line-height: 1.45; }
+
+    /* Voice badge per card */
+    .voice-badge {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 99px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .v-Puck    { background:#fef9c3; color:#713f12; }
+    .v-Charon  { background:#1e3a8a; color:#fff; }
+    .v-Kore    { background:#fce7f3; color:#9d174d; }
+    .v-Fenrir  { background:#fee2e2; color:#7f1d1d; }
+    .v-Aoede   { background:#ede9fe; color:#4c1d95; }
+    .v-Leda    { background:#dcfce7; color:#14532d; }
+    .v-Orus    { background:#e0f2fe; color:#075985; }
+    .v-Zephyr  { background:#ccfbf1; color:#134e4a; }
+
+    .voice-style { font-size: 0.75rem; color: #6b7280; margin-top: 4px; font-style: italic; }
+
+    /* ── Segment list ──────────────────────────────── */
+    .seg-list {
+      margin-top: 14px;
+      max-height: 320px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .seg {
+      border-radius: 8px;
+      padding: 9px 13px;
+      font-size: 0.85rem;
+      line-height: 1.55;
+    }
+    .seg-narration {
+      background: #f9fafb;
+      border-left: 3px solid #e5e7eb;
+      color: #6b7280;
+      font-style: italic;
+    }
+    .seg-dialogue {
+      background: white;
+      border: 1px solid #e2d9f7;
+      border-left: 3px solid #5b3ec8;
+    }
+    .seg-header {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 4px;
+    }
+    .seg-speaker {
+      font-weight: 700;
+      font-size: 0.75rem;
+      color: #5b3ec8;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .emo {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 99px;
+    }
+    .emo-happy      { background:#fef9c3; color:#854d0e; }
+    .emo-sad        { background:#dbeafe; color:#1e3a8a; }
+    .emo-excited    { background:#ffedd5; color:#9a3412; }
+    .emo-scared     { background:#fed7aa; color:#7c2d12; }
+    .emo-angry      { background:#fee2e2; color:#991b1b; }
+    .emo-calm       { background:#dcfce7; color:#14532d; }
+    .emo-mysterious { background:#ede9fe; color:#4c1d95; }
+    .emo-curious    { background:#ccfbf1; color:#134e4a; }
+    .emo-neutral    { background:#f3f4f6; color:#4b5563; }
+
+    .seg-text { color: #1f2937; }
+
+    .summary-line {
+      font-size: 0.8rem;
+      color: #9ca3af;
+      margin-top: 8px;
+    }
+
+    /* ── Recent stories panel ─────────────────────── */
+    #recent-panel {
+      max-width: 960px;
+      margin: 24px auto 0;
+      padding: 0 20px;
+      display: none;
+    }
+    #recent-panel details {
+      background: white;
+      border: 1px solid #e2d9f7;
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    #recent-panel summary {
+      padding: 14px 20px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      color: #5b3ec8;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #recent-panel summary::-webkit-details-marker { display: none; }
+    #recent-panel summary::before { content: '▸'; transition: transform 0.15s; }
+    #recent-panel details[open] summary::before { transform: rotate(90deg); }
+    .recent-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .recent-table th {
+      text-align: left;
+      padding: 8px 20px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      border-top: 1px solid #f3f4f6;
+      background: #faf8ff;
+    }
+    .recent-table td {
+      padding: 10px 20px;
+      border-top: 1px solid #f3f4f6;
+    }
+    .recent-table tr:hover td { background: #f9f7ff; cursor: pointer; }
+    .recent-status {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 99px;
+      white-space: nowrap;
+    }
+    .rs-extracted      { background:#ede9fe; color:#5b21b6; }
+    .rs-voices_assigned{ background:#dcfce7; color:#166534; }
+    .rs-audio_generated{ background:#dbeafe; color:#1d4ed8; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>MagicTales AI</h1>
+  <p>Book → Characters → Voices → Audiobook</p>
+</header>
+
+<!-- ── Recent stories ───────────────────────────── -->
+<div id="recent-panel">
+  <details>
+    <summary>Recent stories</summary>
+    <table class="recent-table">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Created</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="recent-rows"></tbody>
+    </table>
+  </details>
+</div>
+
+<div class="pipeline">
+
+  <!-- ── Step 1: Upload ───────────────────────────── -->
+  <div class="step active" id="step-upload">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">Upload Book</div>
+      <span class="step-status status-active" id="st-upload">Waiting</span>
+    </div>
+    <div class="step-body">
+      <div id="upload-zone"
+           onclick="document.getElementById('file-input').click()"
+           ondragover="onDragOver(event)"
+           ondragleave="onDragLeave(event)"
+           ondrop="onDrop(event)">
+        <input type="file" id="file-input" accept=".pdf,.epub" onchange="onFileSelected(event)" />
+        <div class="icon">📖</div>
+        <p>Drop a <strong>PDF</strong> or <strong>EPUB</strong>, or click to browse</p>
+        <div id="upload-loaded"></div>
+      </div>
+      <div class="msg" id="msg-upload"></div>
+    </div>
+  </div>
+
+  <!-- ── Step 2: Extract ──────────────────────────── -->
+  <div class="step locked" id="step-extract">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">Extract Characters &amp; Segments</div>
+      <span class="step-status status-locked" id="st-extract">Locked</span>
+    </div>
+    <div class="step-body">
+      <button class="btn" id="btn-extract" onclick="runExtract()" disabled>
+        Analyse Book
+      </button>
+      <div class="msg" id="msg-extract"></div>
+      <div id="extract-results" style="display:none;">
+        <div class="summary-line" id="extract-summary"></div>
+        <div class="char-grid" id="char-grid"></div>
+        <div class="seg-list" id="seg-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 3: Assign Voices ────────────────────── -->
+  <div class="step locked" id="step-voices">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">Assign Voices</div>
+      <span class="step-status status-locked" id="st-voices">Locked</span>
+    </div>
+    <div class="step-body">
+      <button class="btn" id="btn-voices" onclick="runVoices()" disabled>
+        Cast Characters
+      </button>
+      <div class="msg" id="msg-voices"></div>
+      <div id="voices-results" style="display:none;">
+        <div class="summary-line" id="voices-summary"></div>
+        <div class="char-grid" id="voice-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 4: Play ─────────────────────────────── -->
+  <div class="step locked" id="step-play">
+    <div class="step-header">
+      <div class="step-num">4</div>
+      <div class="step-title">Play Audiobook</div>
+      <span class="step-status status-locked" id="st-play">Coming soon</span>
+    </div>
+    <div class="step-body">
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <button class="btn btn-play" id="btn-play" onclick="playStory(false)" disabled>
+          ▶ Play Story
+        </button>
+        <button class="btn" id="btn-regen" onclick="playStory(true)" style="display:none; background: #6b7280; margin-top: 16px;">
+          ↺ Regenerate Audio
+        </button>
+      </div>
+      <div class="msg" id="msg-play"></div>
+      <audio id="audio-player" controls style="display:none; margin-top:16px; width:100%;"></audio>
+    </div>
+  </div>
+
+</div><!-- /pipeline -->
+
+<script>
+  // ── State ─────────────────────────────────────────
+  const S = { text: null, filename: null, storyId: null, segmentsCount: 0, currentSegment: 0 };
+
+  // ── Recent stories ────────────────────────────────
+  async function loadRecent() {
+    try {
+      const res = await fetch('/api/stories');
+      if (!res.ok) return;
+      const stories = await res.json();
+      if (!stories.length) return;
+
+      const tbody = document.getElementById('recent-rows');
+      tbody.innerHTML = '';
+      for (const s of stories) {
+        const date = new Date(s.created_at).toLocaleString();
+        const statusClass = `rs-${s.status}`;
+        const statusLabel = s.status.replace(/_/g, ' ');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${esc(s.filename)}</td>
+          <td>${esc(date)}</td>
+          <td><span class="recent-status ${statusClass}">${esc(statusLabel)}</span></td>`;
+        tr.onclick = () => restoreSession(s.story_id);
+        tbody.appendChild(tr);
+      }
+      document.getElementById('recent-panel').style.display = 'block';
+    } catch (_) { /* silently skip if data dir is empty */ }
+  }
+
+  async function restoreSession(storyId) {
+    try {
+      const res = await fetch(`/api/stories/${storyId}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      S.storyId  = data.story_id;
+      S.filename = data.filename;
+      S.segmentsCount = data.segments ? data.segments.length : 0;
+
+      // Step 1: mark upload done
+      document.getElementById('upload-loaded').textContent = `✓ ${data.filename}`;
+      setStepState('step-upload', 'done');
+      setStatus('st-upload', 'Done', 'done');
+
+      // Step 2: render extraction
+      renderExtractResults(data.characters, data.segments);
+      setStepState('step-extract', 'done');
+      setStatus('st-extract', 'Done', 'done');
+
+      // Step 3: voices
+      if (data.voice_assignments) {
+        renderVoiceResults(data.voice_assignments);
+        setStepState('step-voices', 'done');
+        setStatus('st-voices', 'Done', 'done');
+
+        // Step 4: unlock play
+        setStepState('step-play', 'active');
+        document.getElementById('btn-play').disabled = false;
+
+        if (data.has_audio) {
+          const player = document.getElementById('audio-player');
+          player.style.display = 'block';
+          setStatus('st-play', 'Ready', 'done');
+          document.getElementById('btn-play').textContent = '▶ Play Story';
+          document.getElementById('btn-regen').style.display = 'inline-flex';
+          document.getElementById('btn-regen').disabled = false;
+          
+          // Pre-load the first segment so the native player works if they click it directly
+          if (!player.src) {
+            fetchSegment(0, false).then(url => {
+               if(S.storyId === storyId) player.src = url;
+            });
+          }
+          setupPlayerEnded();
+        } else {
+          setStatus('st-play', 'Ready', 'active');
+        }
+      } else {
+        setStepState('step-voices', 'active');
+        setStatus('st-voices', 'Ready', 'active');
+        document.getElementById('btn-voices').disabled = false;
+      }
+    } catch (e) {
+      alert(`Failed to load story: ${e.message}`);
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', loadRecent);
+
+  // ── Helpers ───────────────────────────────────────
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function setMsg(id, text, type) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = `msg ${type}`;
+  }
+  function clearMsg(id) {
+    const el = document.getElementById(id);
+    el.className = 'msg';
+    el.textContent = '';
+  }
+
+  function setStepState(stepId, state) {
+    // state: 'active' | 'done' | 'locked' | 'loading' | 'error'
+    const step = document.getElementById(stepId);
+    step.className = `step ${state === 'loading' ? 'active' : state}`;
+  }
+
+  function setStatus(stId, label, type) {
+    const el = document.getElementById(stId);
+    el.textContent = label;
+    el.className = `step-status status-${type}`;
+  }
+
+  // ── Step 1: Upload ────────────────────────────────
+  function onDragOver(e)  { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag-over'); }
+  function onDragLeave()  { document.getElementById('upload-zone').classList.remove('drag-over'); }
+  async function onDrop(e) {
+    e.preventDefault();
+    onDragLeave();
+    const file = e.dataTransfer.files[0];
+    if (file) await uploadFile(file);
+  }
+  async function onFileSelected(e) {
+    const file = e.target.files[0];
+    if (file) await uploadFile(file);
+  }
+
+  async function uploadFile(file) {
+    setMsg('msg-upload', `Reading ${file.name}…`, 'loading');
+    setStatus('st-upload', 'Uploading…', 'loading');
+
+    const form = new FormData();
+    form.append('file', file);
+
+    try {
+      const res = await fetch('/api/upload-text', { method: 'POST', body: form });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      S.text     = data.text;
+      S.filename = data.filename || file.name;
+
+      document.getElementById('upload-loaded').textContent = `✓ ${file.name}`;
+      clearMsg('msg-upload');
+      setStepState('step-upload', 'done');
+      setStatus('st-upload', 'Done', 'done');
+
+      // Unlock extract
+      setStepState('step-extract', 'active');
+      setStatus('st-extract', 'Ready', 'active');
+      document.getElementById('btn-extract').disabled = false;
+    } catch (e) {
+      setMsg('msg-upload', `Error: ${e.message}`, 'error');
+      setStatus('st-upload', 'Error', 'error');
+    }
+  }
+
+  // ── Step 2: Extract ───────────────────────────────
+  async function runExtract() {
+    if (!S.text) return;
+    const btn = document.getElementById('btn-extract');
+    btn.disabled = true;
+    setMsg('msg-extract', 'Analysing — this can take a few minutes for a full book…', 'loading');
+    setStatus('st-extract', 'Running…', 'loading');
+
+    try {
+      const res = await fetch('/api/extract-characters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: S.text, filename: S.filename }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      S.storyId = data.story_id;
+      S.segmentsCount = data.segments ? data.segments.length : 0;
+
+      clearMsg('msg-extract');
+      renderExtractResults(data.characters, data.segments);
+      setStepState('step-extract', 'done');
+      setStatus('st-extract', 'Done', 'done');
+
+      // Unlock voices
+      setStepState('step-voices', 'active');
+      setStatus('st-voices', 'Ready', 'active');
+      document.getElementById('btn-voices').disabled = false;
+    } catch (e) {
+      setMsg('msg-extract', `Error: ${e.message}`, 'error');
+      setStatus('st-extract', 'Error', 'error');
+      btn.disabled = false;
+    }
+  }
+
+  function renderExtractResults(characters, segments) {
+    // Summary
+    const dialogueCount = segments.filter(s => s.type === 'dialogue').length;
+    document.getElementById('extract-summary').textContent =
+      `${characters.length} characters · ${segments.length} segments (${dialogueCount} dialogue)`;
+
+    // Character cards (no voice yet)
+    const grid = document.getElementById('char-grid');
+    grid.innerHTML = '';
+    for (const c of characters) {
+      grid.innerHTML += `
+        <div class="char-card" id="ccard-${esc(c.name.replace(/\s+/g,'_'))}">
+          <div class="char-card-top">
+            <span class="char-name">${esc(c.name)}</span>
+            <span class="role-badge role-${c.role}">${c.role}</span>
+          </div>
+          <div class="char-desc">${esc(c.description)}</div>
+        </div>`;
+    }
+
+    // First 80 segments preview
+    const list = document.getElementById('seg-list');
+    list.innerHTML = '';
+    const preview = segments.slice(0, 80);
+    for (const seg of preview) {
+      if (seg.type === 'narration') {
+        list.innerHTML += `
+          <div class="seg seg-narration">
+            <div style="font-size:0.7rem;color:#9ca3af;font-weight:700;margin-bottom:3px;text-transform:uppercase;">Narrator</div>
+            <div class="seg-text">${esc(seg.text)}</div>
+          </div>`;
+      } else {
+        list.innerHTML += `
+          <div class="seg seg-dialogue">
+            <div class="seg-header">
+              <span class="seg-speaker">${esc(seg.speaker)}</span>
+              <span class="emo emo-${seg.emotion}">${seg.emotion}</span>
+            </div>
+            <div class="seg-text">${esc(seg.text)}</div>
+          </div>`;
+      }
+    }
+    if (segments.length > 80) {
+      list.innerHTML += `<div class="summary-line" style="padding:6px 0;">… and ${segments.length - 80} more segments</div>`;
+    }
+
+    document.getElementById('extract-results').style.display = 'block';
+  }
+
+  // ── Step 3: Voices ────────────────────────────────
+  async function runVoices() {
+    if (!S.storyId) return;
+    const btn = document.getElementById('btn-voices');
+    btn.disabled = true;
+    setMsg('msg-voices', 'Casting characters — asking Gemini to pick voices…', 'loading');
+    setStatus('st-voices', 'Running…', 'loading');
+
+    try {
+      const res = await fetch(`/api/stories/${S.storyId}/assign-voices`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+
+      clearMsg('msg-voices');
+      renderVoiceResults(data.assignments);
+      setStepState('step-voices', 'done');
+      setStatus('st-voices', 'Done', 'done');
+
+      // Unlock play
+      setStepState('step-play', 'active');
+      setStatus('st-play', 'Ready', 'active');
+      document.getElementById('btn-play').disabled = false;
+      document.getElementById('btn-regen').style.display = 'inline-flex';
+      document.getElementById('btn-regen').disabled = false;
+      setupPlayerEnded();
+    } catch (e) {
+      setMsg('msg-voices', `Error: ${e.message}`, 'error');
+      setStatus('st-voices', 'Error', 'error');
+      btn.disabled = false;
+    }
+  }
+
+  function renderVoiceResults(assignments) {
+    document.getElementById('voices-summary').textContent =
+      `${assignments.length} characters cast`;
+
+    const grid = document.getElementById('voice-grid');
+    grid.innerHTML = '';
+    for (const a of assignments) {
+      // Also patch the character card from step 2 with the voice badge
+      const cardId = `ccard-${a.character_name.replace(/\s+/g,'_')}`;
+      const card = document.getElementById(cardId);
+      if (card) {
+        card.innerHTML += `<span class="voice-badge v-${esc(a.voice_name)}">${esc(a.voice_name)}</span>
+          <div class="voice-style">${esc(a.speaking_style)}</div>`;
+      }
+
+      grid.innerHTML += `
+        <div class="char-card">
+          <div class="char-card-top">
+            <span class="char-name">${esc(a.character_name)}</span>
+            <span class="voice-badge v-${esc(a.voice_name)}">${esc(a.voice_name)}</span>
+          </div>
+          <div class="voice-style">${esc(a.speaking_style)}</div>
+          <div class="char-desc" style="margin-top:6px;">${esc(a.rationale)}</div>
+        </div>`;
+    }
+
+    document.getElementById('voices-results').style.display = 'block';
+  }
+
+  // ── Step 4: Play ──────────────────────────────────
+  const prefetchCache = {}; // index -> blob url
+  const fetchPromises = {}; // index -> promise
+
+  async function fetchSegment(index, force) {
+    if (prefetchCache[index] && !force) return prefetchCache[index];
+    if (fetchPromises[index] && !force) return fetchPromises[index];
+
+    fetchPromises[index] = (async () => {
+      const url = `/api/stories/${S.storyId}/audio/${index}${force ? '?force=true' : ''}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      prefetchCache[index] = objectUrl;
+      return objectUrl;
+    })();
+
+    return fetchPromises[index];
+  }
+
+  function setupPlayerEnded() {
+    const player = document.getElementById('audio-player');
+    if (!player.onended) {
+      player.onended = async () => {
+        S.currentSegment++;
+        if (S.currentSegment < S.segmentsCount) {
+          setMsg('msg-play', `Playing segment ${S.currentSegment + 1}/${S.segmentsCount}`, 'loading');
+          try {
+            player.src = await fetchSegment(S.currentSegment, false);
+            player.play();
+            if (S.currentSegment + 1 < S.segmentsCount) {
+              fetchSegment(S.currentSegment + 1, false).catch(() => {});
+            }
+          } catch (e) {
+            setMsg('msg-play', `Error loading segment ${S.currentSegment + 1}: ${e.message}`, 'error');
+          }
+        } else {
+          setMsg('msg-play', 'Finished story.', 'done');
+          setStatus('st-play', 'Done', 'done');
+          document.getElementById('btn-play').disabled = false;
+          document.getElementById('btn-regen').disabled = false;
+        }
+      };
+    }
+  }
+
+  async function playStory(isRegen = false) {
+    if (!S.storyId) return;
+    const btnPlay = document.getElementById('btn-play');
+    const btnRegen = document.getElementById('btn-regen');
+    
+    btnPlay.disabled = true;
+    if (btnRegen) btnRegen.disabled = true;
+
+    if (isRegen) {
+      Object.values(prefetchCache).forEach(url => URL.revokeObjectURL(url));
+      for (let k in prefetchCache) delete prefetchCache[k];
+      for (let k in fetchPromises) delete fetchPromises[k];
+      S.currentSegment = 0;
+    } else {
+      // If we pause and play again, or want to replay
+      // We might want to restart from 0 if it already finished
+      if (S.currentSegment >= S.segmentsCount) {
+        S.currentSegment = 0;
+      }
+    }
+
+    setMsg('msg-play', 'Loading audio…', 'loading');
+    setStatus('st-play', 'Loading…', 'loading');
+
+    try {
+      const player = document.getElementById('audio-player');
+      player.style.display = 'block';
+      
+      setupPlayerEnded();
+
+      player.src = await fetchSegment(S.currentSegment, isRegen);
+      player.play();
+
+      setMsg('msg-play', `Playing segment ${S.currentSegment + 1}/${S.segmentsCount}`, 'loading');
+      setStatus('st-play', 'Playing', 'done');
+      btnPlay.disabled = false;
+      if (btnRegen) btnRegen.disabled = false;
+
+      // Prefetch next segment
+      if (S.currentSegment + 1 < S.segmentsCount) {
+        fetchSegment(S.currentSegment + 1, isRegen).catch(() => {});
+      }
+
+    } catch (e) {
+      setMsg('msg-play', `Error: ${e.message}`, 'error');
+      setStatus('st-play', 'Error', 'error');
+      btnPlay.disabled = false;
+      if (btnRegen) btnRegen.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>

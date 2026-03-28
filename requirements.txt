@@ -1,0 +1,10 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+google-genai>=1.0.0
+python-dotenv>=1.0.0
+aiofiles>=24.0.0
+pypdf>=4.0.0
+ebooklib>=0.18
+beautifulsoup4>=4.12.0
+python-multipart>=0.0.9
