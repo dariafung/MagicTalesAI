@@ -134,6 +134,7 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 The_Merchant_Of_Venice.pdf
+background-music/
 # Environments
 .env
 .envrc

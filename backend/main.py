@@ -11,9 +11,9 @@ from .gemini_client import extract_characters_from_story
 from .models import ExtractRequest, ExtractResponse, StoryMeta
 from .music_generator import generate_emotion_music
 from .storage import (
-    list_stories, load_full_session, load_music,
-    music_path, save_extraction, save_meta, save_music,
-    save_segment_audio, save_voices, segment_audio_path,
+    has_music, has_segment_audio, list_stories, load_full_session,
+    load_music, load_segment_audio, save_extraction, save_meta,
+    save_music, save_segment_audio, save_voices
 )
 from .tts_generator import generate_segment_audio
 from .voice_assigner import assign_voices
@@ -55,8 +55,8 @@ async def extract_characters(request: ExtractRequest):
         created_at=datetime.now(timezone.utc).isoformat(),
         status="extracted",
     )
-    save_meta(story_id, meta)
-    save_extraction(story_id, result)
+    await save_meta(story_id, meta)
+    await save_extraction(story_id, result)
 
     return ExtractResponse(story_id=story_id, **result.model_dump())
 
@@ -65,13 +65,13 @@ async def extract_characters(request: ExtractRequest):
 async def assign_voices_endpoint(story_id: str):
     from .storage import load_extraction, load_meta, save_meta
 
-    extraction = load_extraction(story_id)
+    extraction = await load_extraction(story_id)
     voice_result = await assign_voices(extraction)
-    save_voices(story_id, voice_result)
+    await save_voices(story_id, voice_result)
 
-    meta = load_meta(story_id)
+    meta = await load_meta(story_id)
     meta.status = "voices_assigned"
-    save_meta(story_id, meta)
+    await save_meta(story_id, meta)
 
     return voice_result
 
@@ -80,12 +80,13 @@ async def assign_voices_endpoint(story_id: str):
 async def get_segment_audio_endpoint(story_id: str, index: int, force: bool = False):
     from .storage import load_extraction, load_voices, load_meta
 
-    cached = segment_audio_path(story_id, index)
-    if not force and cached.exists():
-        return Response(content=cached.read_bytes(), media_type="audio/wav")
+    if not force and await has_segment_audio(story_id, index):
+        cached = await load_segment_audio(story_id, index)
+        if cached:
+            return Response(content=cached, media_type="audio/wav")
 
-    extraction = load_extraction(story_id)
-    voices = load_voices(story_id)
+    extraction = await load_extraction(story_id)
+    voices = await load_voices(story_id)
 
     if index < 0 or index >= len(extraction.segments):
         raise HTTPException(status_code=404, detail="Segment index out of bounds")
@@ -94,13 +95,13 @@ async def get_segment_audio_endpoint(story_id: str, index: int, force: bool = Fa
     if not wav_bytes:
         raise HTTPException(status_code=500, detail="Failed to generate audio for segment.")
 
-    save_segment_audio(story_id, index, wav_bytes)
+    await save_segment_audio(story_id, index, wav_bytes)
 
     if index == 0:
-        meta = load_meta(story_id)
+        meta = await load_meta(story_id)
         if meta.status != "audio_generated":
             meta.status = "audio_generated"
-            save_meta(story_id, meta)
+            await save_meta(story_id, meta)
 
     return Response(content=wav_bytes, media_type="audio/wav")
 
@@ -109,15 +110,15 @@ async def get_segment_audio_endpoint(story_id: str, index: int, force: bool = Fa
 async def generate_music_endpoint(story_id: str):
     from .storage import load_extraction
 
-    extraction = load_extraction(story_id)
+    extraction = await load_extraction(story_id)
     unique_emotions = {seg.emotion.value for seg in extraction.segments}
 
     async def _gen(emotion: str) -> tuple[str, str]:
-        if music_path(story_id, emotion).exists():
+        if await has_music(story_id, emotion):
             return emotion, "cached"
         data = await generate_emotion_music(emotion)
         if data:
-            save_music(story_id, emotion, data)
+            await save_music(story_id, emotion, data)
             return emotion, "generated"
         return emotion, "failed"
 
@@ -127,21 +128,21 @@ async def generate_music_endpoint(story_id: str):
 
 @app.get("/api/stories/{story_id}/music/{emotion}")
 async def get_music_endpoint(story_id: str, emotion: str):
-    data = load_music(story_id, emotion)
+    data = await load_music(story_id, emotion)
     if data is None:
         # Generate on demand if not cached (handles partial pre-generation failures)
         data = await generate_emotion_music(emotion)
         if data is None:
             raise HTTPException(status_code=404, detail=f"Music generation failed for emotion '{emotion}'")
-        save_music(story_id, emotion, data)
+        await save_music(story_id, emotion, data)
     return Response(content=data, media_type="audio/mpeg")
 
 
 @app.get("/api/stories")
 async def list_stories_endpoint():
-    return list_stories()
+    return await list_stories()
 
 
 @app.get("/api/stories/{story_id}")
 async def get_story(story_id: str):
-    return load_full_session(story_id)
+    return await load_full_session(story_id)

@@ -8,3 +8,5 @@ pypdf>=4.0.0
 ebooklib>=0.18
 beautifulsoup4>=4.12.0
 python-multipart>=0.0.9
+google-cloud-firestore>=2.14.0
+google-cloud-storage>=2.14.0
